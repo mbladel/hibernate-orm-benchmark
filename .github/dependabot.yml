@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    ignore:
+      - dependency-name: "org.apache.maven.plugins:*"
+      - dependency-name: "com.h2database:h2"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "org.hibernate:hibernate-core"
+        update-types: [ "version-update:semver-major", "version-update:semver-minor" ]
+      - dependency-name: "org.hibernate:*"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "org.hibernate.*:*"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "com.github.alexcojocaru:elasticsearch-maven-plugin"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "org.elasticsearch:*"
+        update-types: [ "version-update:semver-major" ]
+      - dependency-name: "org.elasticsearch.*:*"
+        update-types: [ "version-update:semver-major" ]

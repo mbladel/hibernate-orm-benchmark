@@ -1,0 +1,29 @@
+# Gradle work directory and caches
+.gradle
+.gradletasknamecache
+
+/target
+*/target
+*/**/target
+/build
+*/build
+
+# IntelliJ specific files/directories
+out
+.idea
+*.ipr
+*.iws
+*.iml
+atlassian-ide-plugin.xml
+
+# Eclipse specific files/directories
+.classpath
+.project
+.settings
+.metadata
+bin
+
+# Miscellaneous
+*.log
+.clover
+.DS_Store
