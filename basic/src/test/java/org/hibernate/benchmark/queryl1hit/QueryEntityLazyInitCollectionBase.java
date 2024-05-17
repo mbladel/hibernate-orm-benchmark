@@ -18,21 +18,24 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Persistence;
 import jakarta.persistence.Table;
+import org.openjdk.jmh.annotations.AuxCounters;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.infra.Blackhole;
 
 @State(Scope.Thread)
 public class QueryEntityLazyInitCollectionBase {
 
 	protected EntityManagerFactory entityManagerFactory;
+	protected EntityManager em;
 
 	@Setup
 	public void setup() {
 		entityManagerFactory = Persistence.createEntityManagerFactory("bench1");
 
-		final EntityManager em = entityManagerFactory.createEntityManager();
+		em = entityManagerFactory.createEntityManager();
 		em.getTransaction().begin();
 		em.createQuery("delete Book").executeUpdate();
 		em.createQuery("delete Author").executeUpdate();
@@ -42,16 +45,34 @@ public class QueryEntityLazyInitCollectionBase {
 		}
 		em.getTransaction().commit();
 		em.close();
+
+		em = entityManagerFactory.createEntityManager();
 	}
 
 	@TearDown
 	public void destroy() {
+		em.close();
 		entityManagerFactory.close();
 	}
 
-	protected void queryAuthors(EntityManager em) {
+	@State(Scope.Thread)
+	@AuxCounters(AuxCounters.Type.OPERATIONS)
+	public static class EventCounters {
+		public long queries;
+	}
+
+	protected void queryAuthors(Blackhole bh, EventCounters counters) {
 		final List<Author> authors = em.createQuery( "from Author", Author.class ).getResultList();
-		authors.forEach( author -> assertFalse( author.books.isEmpty() ) );
+		for ( Author author : authors ) {
+			boolean empty = author.books.isEmpty();
+			if ( bh != null ) {
+				bh.consume( author );
+				bh.consume( empty );
+			}
+		}
+		if ( counters != null ) {
+			counters.queries += authors.size();
+		}
 	}
 
 	private static void assertFalse(boolean empty) {

@@ -17,58 +17,75 @@ import jakarta.persistence.Persistence;
 import jakarta.persistence.Table;
 import jakarta.persistence.TypedQuery;
 
+import org.openjdk.jmh.annotations.AuxCounters;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.infra.Blackhole;
+
 @State(Scope.Thread)
 public class QueryEntityQueryReferringEntityBase {
 
 	static final int NUMBER_OF_ENTITIES = 1000;
 
 	protected EntityManagerFactory entityManagerFactory;
+	protected EntityManager em;
 
 	@Setup
 	public void setup() {
 		entityManagerFactory = Persistence.createEntityManagerFactory( "bench2" );
 
-		final EntityManager em = entityManagerFactory.createEntityManager();
+		em = entityManagerFactory.createEntityManager();
 		em.getTransaction().begin();
 		em.createQuery( "delete ProjectAccess" ).executeUpdate();
 		em.createQuery( "delete Project" ).executeUpdate();
 		em.createQuery( "delete Employee" ).executeUpdate();
-		for ( int i = 0; i < 1000; i++ ) {
+		for ( int i = 0; i < 1; i++ ) {
 			populateData( em );
 		}
 		em.getTransaction().commit();
 		em.close();
+
+		em = entityManagerFactory.createEntityManager();
 	}
 
 	@TearDown
 	public void destroy() {
+		em.close();
 		entityManagerFactory.close();
 	}
 
-	public void perf() {
-		throw new UnsupportedOperationException("Not implemented");
+	@State(Scope.Thread)
+	@AuxCounters(AuxCounters.Type.OPERATIONS)
+	public static class EventCounters {
+		public long queries;
 	}
 
-	public void queryEmployees(EntityManager entityManager, boolean includeQueryAccess) {
-		TypedQuery<Employee> query = entityManager.createQuery( "select e From Employee e", Employee.class );
+	public void queryEmployees(boolean includeQueryAccess, Blackhole bh, EventCounters counters) {
+		TypedQuery<Employee> query = em.createQuery( "select e From Employee e", Employee.class );
 		List<Employee> employeeList = query.getResultList();
 		for ( Employee employee : employeeList ) {
+			if ( bh != null ) {
+				bh.consume( employee );
+			}
 			if ( includeQueryAccess ) {
-				queryAccessForEmployee( entityManager, employee );
+				TypedQuery<ProjectAccess> accessQuery = em
+						.createQuery( "select pa From ProjectAccess pa where pa.employee = :employee", ProjectAccess.class )
+						.setParameter( "employee", employee );
+
+				List<ProjectAccess> resultList = accessQuery.getResultList();
+				if ( bh != null ) {
+					bh.consume( resultList );
+				}
 			}
 		}
-	}
-
-	public void queryAccessForEmployee(EntityManager entityManager, Employee employee) {
-		TypedQuery<ProjectAccess> accessQuery = entityManager
-				.createQuery( "select pa From ProjectAccess pa where pa.employee = :employee", ProjectAccess.class )
-				.setParameter( "employee", employee );
-
-		accessQuery.getResultList();
+		if (counters != null ) {
+			counters.queries++;
+			if ( includeQueryAccess ) {
+				counters.queries += employeeList.size();
+			}
+		}
 	}
 
 	public void populateData(EntityManager entityManager) {

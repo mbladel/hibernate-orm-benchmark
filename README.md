@@ -22,9 +22,9 @@ Running the previous command should print something like (assuming Linux perf to
 ```
 Secondary result "org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.test:·async":
 Async profiler results:
-  /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.test-Throughput-count-100/jfr-cpu.jfr
+  /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.single-Throughput/jfr-cpu.jfr
 Async profiler results:
-  /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.test-Throughput-count-100/jfr-cpu.jfr
+  /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.single-Throughput/jfr-cpu.jfr
 ```
 and finally the results:
 ```
@@ -56,15 +56,15 @@ The position of the `jfr` files can be used along with the async-profiler conver
 
 For alloc flamegraphs:
 ```
-$ java -cp ${ASYNC_PROFILER_HOME}/lib/converter.jar jfr2flame --alloc --total /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.test-Throughput-count-100/jfr-cpu.jfr alloc.html
+$ java -cp ${ASYNC_PROFILER_HOME}/lib/converter.jar jfr2flame --alloc --total /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.single-Throughput/jfr-cpu.jfr alloc.html
 ```
 The `--total` flag is used to produce flamegraph samples based on the configred allocation threshold, aiming to show the total size of allocations.
 
 Instead, for wall clock and cpu flamegraphs:
 ```
-$ java -cp ~/async-profiler/lib/converter.jar jfr2flame --state default /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.test-Throughput-count-100/jfr-cpu.jfr cpu.html
+$ java -cp ${ASYNC_PROFILER_HOME}/lib/converter.jar jfr2flame --state default /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.single-Throughput/jfr-cpu.jfr cpu.html
 
-$ java -cp ~/async-profiler/lib/converter.jar jfr2flame --state runnable,sleeping /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.test-Throughput-count-100/jfr-cpu.jfr wall.html
+$ java -cp ${ASYNC_PROFILER_HOME}/lib/converter.jar jfr2flame --state runnable,sleeping /tmp/org.hibernate.benchmark.queryl1hit.QueryEntityLazyInitCollectionLoop.single-Throughput/jfr-cpu.jfr wall.html
 ```
 Why we're using `--state` here? 
 
