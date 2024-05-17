@@ -23,10 +23,8 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-
 @State(Scope.Thread)
-public abstract class QueryEntityLazyInitCollectionBase {
+public class QueryEntityLazyInitCollectionBase {
 
 	protected EntityManagerFactory entityManagerFactory;
 
@@ -56,7 +54,15 @@ public abstract class QueryEntityLazyInitCollectionBase {
 		authors.forEach( author -> assertFalse( author.books.isEmpty() ) );
 	}
 
-	public abstract void test();
+	private static void assertFalse(boolean empty) {
+		if (empty) {
+			throw new AssertionError();
+		}
+	}
+
+	public void test() {
+		throw new UnsupportedOperationException("Not implemented");
+	}
 
 	public void populateData(EntityManager entityManager) {
 		final Book book = new Book();
