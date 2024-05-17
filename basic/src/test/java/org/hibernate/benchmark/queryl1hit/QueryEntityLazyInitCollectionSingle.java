@@ -10,9 +10,6 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 import org.openjdk.jmh.runner.options.TimeValue;
 
 import java.io.IOException;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * Query an entity and initialize a lazy collection.

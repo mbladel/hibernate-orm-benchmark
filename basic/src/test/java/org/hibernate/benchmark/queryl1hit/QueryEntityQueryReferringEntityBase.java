@@ -22,7 +22,7 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 @State(Scope.Thread)
-public abstract class QueryEntityQueryReferringEntityBase {
+public class QueryEntityQueryReferringEntityBase {
 
 	static final int NUMBER_OF_ENTITIES = 1000;
 
@@ -49,7 +49,9 @@ public abstract class QueryEntityQueryReferringEntityBase {
 		entityManagerFactory.close();
 	}
 
-	public abstract void perf();
+	public void perf() {
+		throw new UnsupportedOperationException("Not implemented");
+	}
 
 	public void queryEmployees(EntityManager entityManager, boolean includeQueryAccess) {
 		TypedQuery<Employee> query = entityManager.createQuery( "select e From Employee e", Employee.class );
