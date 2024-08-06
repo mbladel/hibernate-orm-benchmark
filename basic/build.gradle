@@ -9,23 +9,24 @@ plugins {
     id "me.champeau.jmh" version "0.7.2"
 }
 
+apply from: rootProject.file( 'gradle/databases.gradle' )
+
 repositories {
     mavenLocal()
 }
 
 dependencies {
-    testRuntimeOnly 'com.h2database:h2:2.2.224'
-
     testImplementation 'org.openjdk.jmh:jmh-core:1.36'
     testImplementation 'org.openjdk.jmh:jmh-generator-annprocess:1.36'
+
     def orm = project.findProperty("orm")
     if ( "6.4" == orm ) {
         testImplementation 'org.hibernate.orm:hibernate-core:6.4.8.Final'
         testImplementation 'org.hibernate.orm:hibernate-testing:6.4.8.Final'
     }
     else if ( "6.2" == orm ) {
-        testImplementation 'org.hibernate.orm:hibernate-core:6.2.25.Final'
-        testImplementation 'org.hibernate.orm:hibernate-testing:6.2.25.Final'
+        testImplementation 'org.hibernate.orm:hibernate-core:6.2.29-SNAPSHOT'
+        testImplementation 'org.hibernate.orm:hibernate-testing:6.2.29-SNAPSHOT'
     }
     else if ( "5.6" == orm ) {
         testImplementation 'org.hibernate:hibernate-core-jakarta:5.6.15.Final'
@@ -36,8 +37,50 @@ dependencies {
         testImplementation 'org.hibernate.orm:hibernate-testing:6.6.0-perf'
     }
     else {
-        testImplementation 'org.hibernate.orm:hibernate-core:6.6.0.Alpha1'
-        testImplementation 'org.hibernate.orm:hibernate-testing:6.6.0.Alpha1'
+        testImplementation 'org.hibernate.orm:hibernate-core:6.6.0.CR1'
+        testImplementation 'org.hibernate.orm:hibernate-testing:6.6.0.CR1'
+    }
+
+    //Databases
+    testRuntimeOnly dbLibs.h2
+    testRuntimeOnly dbLibs.derby
+    testRuntimeOnly dbLibs.derbyTools
+    testRuntimeOnly dbLibs.hsqldb
+    testRuntimeOnly dbLibs.postgresql
+    testRuntimeOnly dbLibs.mssql
+    testRuntimeOnly dbLibs.informix
+    testRuntimeOnly dbLibs.cockroachdb
+    testRuntimeOnly dbLibs.sybase
+    testRuntimeOnly rootProject.fileTree(dir: 'drivers', include: '*.jar')
+
+    // Since both the DB2 driver and HANA have a package "net.jpountz" we have to add dependencies conditionally
+    // This is due to the "no split-packages" requirement of Java 9+
+
+    if ( db.startsWith( 'db2' ) ) {
+        testRuntimeOnly dbLibs.db2
+    }
+    else if ( db.startsWith( 'hana' ) ) {
+        testRuntimeOnly dbLibs.hana
+    }
+    else if ( db.startsWith( 'mysql' ) || db.startsWith( 'tidb' ) ) {
+        testRuntimeOnly dbLibs.mysql
+    }
+    else if ( db.startsWith( 'mariadb' ) ) {
+        testRuntimeOnly dbLibs.mariadb
+    }
+    else if ( db.startsWith( 'firebird' ) ) {
+        testRuntimeOnly dbLibs.firebird
+    }
+    else if ( db.startsWith( 'oracle' ) ) {
+        testRuntimeOnly dbLibs.oracle
+        testRuntimeOnly dbLibs.oracleXml
+        testRuntimeOnly dbLibs.oracleXmlParser
+    }
+    else if ( db.startsWith( 'altibase' ) ) {
+        testRuntimeOnly dbLibs.altibase
+    }
+    else if ( db.startsWith( 'informix' ) ) {
+        testRuntimeOnly dbLibs.informix
     }
 }
 

@@ -27,3 +27,6 @@ bin
 *.log
 .clover
 .DS_Store
+
+# JMH reports
+*.html

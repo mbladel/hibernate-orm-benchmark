@@ -28,7 +28,7 @@ public class QueryImmutableEntity {
 
 	@Setup
 	public void setup() {
-		entityManagerFactory = Persistence.createEntityManagerFactory("bench3");
+		entityManagerFactory = Persistence.createEntityManagerFactory("QueryImmutableEntity");
 
 		em = entityManagerFactory.createEntityManager();
 		em.getTransaction().begin();
