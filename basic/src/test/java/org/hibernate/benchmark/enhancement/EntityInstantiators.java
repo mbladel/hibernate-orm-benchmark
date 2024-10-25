@@ -1,18 +1,21 @@
 package org.hibernate.benchmark.enhancement;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.hibernate.AssertionFailure;
 import org.hibernate.HibernateException;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.boot.registry.BootstrapServiceRegistryBuilder;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.bytecode.enhance.spi.EnhancementContext;
 import org.hibernate.bytecode.enhance.spi.Enhancer;
-import org.hibernate.bytecode.internal.none.BytecodeProviderImpl;
+import org.hibernate.bytecode.internal.bytebuddy.BytecodeProviderImpl;
 import org.hibernate.bytecode.spi.BasicProxyFactory;
 import org.hibernate.bytecode.spi.BytecodeProvider;
 import org.hibernate.bytecode.spi.ProxyFactoryFactory;
@@ -20,10 +23,12 @@ import org.hibernate.bytecode.spi.ReflectionOptimizer;
 import org.hibernate.cfg.AvailableSettings;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.engine.spi.SessionImplementor;
 import org.hibernate.engine.spi.SharedSessionContractImplementor;
 import org.hibernate.metamodel.internal.EntityInstantiatorPojoOptimized;
 import org.hibernate.metamodel.internal.EntityInstantiatorPojoStandard;
 import org.hibernate.metamodel.spi.EntityInstantiator;
+import org.hibernate.persister.entity.EntityPersister;
 import org.hibernate.property.access.spi.PropertyAccess;
 import org.hibernate.proxy.HibernateProxy;
 import org.hibernate.proxy.ProxyFactory;
@@ -39,6 +44,8 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.infra.Blackhole;
+
+import static org.hibernate.benchmark.enhancement.EnhancementUtils.buildEnhancerClassLoader;
 
 /**
  * @author Marco Belladelli
@@ -91,12 +98,12 @@ public class EntityInstantiators {
 		}
 		switch ( instantiation ) {
 			case OPTIMIZED -> sessionFactory = getSessionFactory(
-					new FortuneBytecodeProvider(),
+					new InstantiationOnlyBytecodeProvider(),
 					EntityInstantiatorPojoOptimized.class,
 					types
 			);
 			case STANDARD -> sessionFactory = getSessionFactory(
-					new BytecodeProviderImpl(),
+					new org.hibernate.bytecode.internal.none.BytecodeProviderImpl(),
 					EntityInstantiatorPojoStandard.class,
 					types
 			);
@@ -145,55 +152,83 @@ public class EntityInstantiators {
 		if ( types == 0 || types > 4 ) {
 			throw new IllegalArgumentException( "Invalid types" );
 		}
-		final Session session = sf.openSession();
+		final SessionImplementor session = (SessionImplementor) sf.openSession();
 		session.getTransaction().begin();
 		switch ( types ) {
 			case 4:
 				for ( int i = 0; i < count; i++ ) {
-					session.persist( new Fortune3( i ) );
+					session.persist( instantiate( Fortune3.class, i, session ) );
 				}
 			case 3:
 				for ( int i = 0; i < count; i++ ) {
-					session.persist( new Fortune2( i ) );
+					session.persist( instantiate( Fortune2.class, i, session ) );
 				}
 			case 2:
 				for ( int i = 0; i < count; i++ ) {
-					session.persist( new Fortune1( i ) );
+					session.persist( instantiate( Fortune1.class, i, session ) );
 				}
 			case 1:
 				for ( int i = 0; i < count; i++ ) {
-					session.persist( new Fortune0( i ) );
+					session.persist( instantiate( Fortune0.class, i, session ) );
 				}
 		}
 		session.getTransaction().commit();
 		session.close();
 	}
 
+	private Object instantiate(Class<?> clazz, int id, SessionImplementor session) {
+		final SessionFactoryImplementor sf = session.getSessionFactory();
+		final EntityPersister entityDescriptor = sf.getMappingMetamodel().getEntityDescriptor( clazz );
+		final Object instance = entityDescriptor.getRepresentationStrategy().getInstantiator().instantiate( sf );
+		entityDescriptor.setIdentifier( instance, id, session );
+		return instance;
+	}
+
 	protected SessionFactory getSessionFactory(
-			BytecodeProvider bytecodeProvider,
-			Class<?> expectedInstantiatorClass,
-			int types) {
-		final Configuration config = new Configuration();
+			BytecodeProvider bytecodeProvider, Class<?> expectedInstantiatorClass, int types) {
+		final List<Class<?>> classes = new ArrayList<>();
 		switch ( types ) {
 			case 4:
-				config.addAnnotatedClass( Fortune3.class );
+				classes.add( Fortune3.class );
 			case 3:
-				config.addAnnotatedClass( Fortune2.class );
+				classes.add( Fortune2.class );
 			case 2:
-				config.addAnnotatedClass( Fortune1.class );
+				classes.add( Fortune1.class );
 			case 1:
-				config.addAnnotatedClass( Fortune0.class );
+				classes.add( Fortune0.class );
 		}
+
+		final Set<String> classNames = classes.stream().map( Class::getName ).collect( Collectors.toSet() );
+		final ClassLoader enhancerClassLoader = buildEnhancerClassLoader(
+				classNames
+		);
+		final BootstrapServiceRegistryBuilder bsrb = new BootstrapServiceRegistryBuilder()
+				.applyClassLoader( enhancerClassLoader );
+		final Configuration config = new Configuration( bsrb.build() );
+		for ( String className : classNames ) {
+			try {
+				config.addAnnotatedClass( enhancerClassLoader.loadClass( className ) );
+			}
+			catch (ClassNotFoundException e) {
+				throw new RuntimeException( e );
+			}
+		}
+
 		final StandardServiceRegistryBuilder srb = config.getStandardServiceRegistryBuilder();
 		srb.applySetting( AvailableSettings.SHOW_SQL, false )
-				.applySetting( AvailableSettings.LOG_SESSION_METRICS, false )
+				.applySetting(
+						AvailableSettings.LOG_SESSION_METRICS,
+						false
+				)
 				.applySetting( AvailableSettings.DIALECT, "org.hibernate.dialect.H2Dialect" )
 				.applySetting( AvailableSettings.JAKARTA_JDBC_DRIVER, "org.h2.Driver" )
 				.applySetting( AvailableSettings.JAKARTA_JDBC_URL, "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1" )
 				.applySetting( AvailableSettings.JAKARTA_JDBC_USER, "sa" )
 				.applySetting( AvailableSettings.HBM2DDL_AUTO, "create-drop" );
+
 		// force no runtime bytecode-enhancement
 		srb.addService( BytecodeProvider.class, bytecodeProvider );
+
 		final SessionFactoryImplementor sf = (SessionFactoryImplementor) config.buildSessionFactory( srb.build() );
 		final EntityInstantiator[] instantiators = new EntityInstantiator[types];
 		switch ( types ) {
@@ -259,9 +294,9 @@ public class EntityInstantiators {
 
 	@CompilerControl(CompilerControl.Mode.DONT_INLINE)
 	private static int queryFortune2(Session session, Blackhole bh) {
-		final List<Fortune2> results = session.createQuery( "from Fortune2", Fortune2.class ).getResultList();
+		final List<Object> results = session.createQuery( "from Fortune2" ).getResultList();
 		int count = 0;
-		for ( Fortune2 fortune : results ) {
+		for ( Object fortune : results ) {
 			if ( bh != null ) {
 				bh.consume( fortune );
 			}
@@ -273,9 +308,9 @@ public class EntityInstantiators {
 
 	@CompilerControl(CompilerControl.Mode.DONT_INLINE)
 	private static int queryFortune3(Session session, Blackhole bh) {
-		final List<Fortune3> results = session.createQuery( "from Fortune3", Fortune3.class ).getResultList();
+		final List<Object> results = session.createQuery( "from Fortune3" ).getResultList();
 		int count = 0;
-		for ( Fortune3 fortune : results ) {
+		for ( Object fortune : results ) {
 			if ( bh != null ) {
 				bh.consume( fortune );
 			}
@@ -287,9 +322,9 @@ public class EntityInstantiators {
 
 	@CompilerControl(CompilerControl.Mode.DONT_INLINE)
 	private static int queryFortune1(Session session, Blackhole bh) {
-		final List<Fortune1> results = session.createQuery( "from Fortune1", Fortune1.class ).getResultList();
+		final List<Object> results = session.createQuery( "from Fortune1" ).getResultList();
 		int count = 0;
-		for ( Fortune1 fortune : results ) {
+		for ( Object fortune : results ) {
 			if ( bh != null ) {
 				bh.consume( fortune );
 			}
@@ -301,9 +336,9 @@ public class EntityInstantiators {
 
 	@CompilerControl(CompilerControl.Mode.DONT_INLINE)
 	private static int queryFortune0(Session session, Blackhole bh) {
-		final List<Fortune0> results = session.createQuery( "from Fortune0", Fortune0.class ).getResultList();
+		final List<Object> results = session.createQuery( "from Fortune0" ).getResultList();
 		int count = 0;
-		for ( Fortune0 fortune0 : results ) {
+		for ( Object fortune0 : results ) {
 			if ( bh != null ) {
 				bh.consume( fortune0 );
 			}
@@ -366,9 +401,11 @@ public class EntityInstantiators {
 	}
 
 	/**
-	 * Empty {@link BytecodeProvider} which only provides the different Fortune static optimizers
+	 * {@link BytecodeProvider} which provides only instantiation optimizers
 	 */
-	static class FortuneBytecodeProvider implements BytecodeProvider {
+	static class InstantiationOnlyBytecodeProvider implements BytecodeProvider {
+		private BytecodeProviderImpl delegate = new BytecodeProviderImpl();
+
 		@Override
 		public ProxyFactoryFactory getProxyFactoryFactory() {
 			return new NoProxyFactoryFactory();
@@ -377,69 +414,25 @@ public class EntityInstantiators {
 		@SuppressWarnings("removal")
 		@Override
 		public ReflectionOptimizer getReflectionOptimizer(
-				Class clazz,
-				String[] getterNames,
-				String[] setterNames,
-				Class[] types) {
+				Class clazz, String[] getterNames, String[] setterNames, Class[] types) {
 			return null;
 		}
 
 		@Override
 		public ReflectionOptimizer getReflectionOptimizer(
-				Class<?> clazz,
-				Map<String, PropertyAccess> propertyAccessMap) {
-			if ( clazz == Fortune0.class ) {
-				return new ReflectionOptimizer() {
-					@Override
-					public InstantiationOptimizer getInstantiationOptimizer() {
-						return new Fortune0Instantiator();
-					}
+				Class<?> clazz, Map<String, PropertyAccess> propertyAccessMap) {
+			final ReflectionOptimizer original = delegate.getReflectionOptimizer( clazz, propertyAccessMap );
+			return new ReflectionOptimizer() {
+				@Override
+				public InstantiationOptimizer getInstantiationOptimizer() {
+					return original.getInstantiationOptimizer();
+				}
 
-					@Override
-					public AccessOptimizer getAccessOptimizer() {
-						return null;
-					}
-				};
-			}
-			else if ( clazz == Fortune1.class ) {
-				return new ReflectionOptimizer() {
-					@Override
-					public InstantiationOptimizer getInstantiationOptimizer() {
-						return new Fortune1Instantiator();
-					}
-
-					@Override
-					public AccessOptimizer getAccessOptimizer() {
-						return null;
-					}
-				};
-			}
-			else if ( clazz == Fortune2.class ) {
-				return new ReflectionOptimizer() {
-					@Override
-					public InstantiationOptimizer getInstantiationOptimizer() {
-						return new Fortune2Instantiator();
-					}
-
-					@Override
-					public AccessOptimizer getAccessOptimizer() {
-						return null;
-					}
-				};
-			}
-			else {
-				return new ReflectionOptimizer() {
-					@Override
-					public InstantiationOptimizer getInstantiationOptimizer() {
-						return new Fortune3Instantiator();
-					}
-
-					@Override
-					public AccessOptimizer getAccessOptimizer() {
-						return null;
-					}
-				};
-			}
+				@Override
+				public AccessOptimizer getAccessOptimizer() {
+					return null;
+				}
+			};
 		}
 
 		@Override
@@ -511,5 +504,19 @@ public class EntityInstantiators {
 				}
 			};
 		}
+	}
+
+	public static void main(String[] args) {
+		final EntityInstantiators benchmark = new EntityInstantiators();
+		benchmark.count = 100;
+		benchmark.morphism = Morphism.QUAD;
+		benchmark.polluteAtWarmup = false;
+		benchmark.instantiation = Instantiation.OPTIMIZED;
+
+		benchmark.setup( null );
+
+		benchmark.query( null );
+
+		benchmark.destroy();
 	}
 }
