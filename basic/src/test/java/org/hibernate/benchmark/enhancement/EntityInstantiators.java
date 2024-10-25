@@ -38,11 +38,13 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.CompilerControl;
+import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 
 import static org.hibernate.benchmark.enhancement.EnhancementUtils.buildEnhancerClassLoader;
@@ -51,6 +53,8 @@ import static org.hibernate.benchmark.enhancement.EnhancementUtils.buildEnhancer
  * @author Marco Belladelli
  */
 @State(Scope.Thread)
+@Warmup(iterations = 10, time = 2)
+@Measurement(iterations = 10, time = 1)
 public class EntityInstantiators {
 
 	public enum Instantiation {
@@ -515,7 +519,9 @@ public class EntityInstantiators {
 
 		benchmark.setup( null );
 
-		benchmark.query( null );
+		for ( int i = 0; i < 5; i++ ) {
+			benchmark.query( null );
+		}
 
 		benchmark.destroy();
 	}

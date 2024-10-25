@@ -18,7 +18,9 @@ fi
 
 ./gradlew jmhJar -Porm=${ORM_VERSION}
 
-java -jar basic/target/libs/hibernate-orm-benchmark-basic-1.0-SNAPSHOT-jmh.jar EntityInstantiators -ppolluteAtWarmup=false -pmorphism=QUAD -f 2 -pcount=100 -prof gc -prof "async:rawCommand=features=vtable;event=cpu;output=jfr;dir=/tmp;libPath=${ASYNC_PROFILER_HOME}/lib/libasyncProfiler.so"
+java -jar basic/target/libs/hibernate-orm-benchmark-basic-1.0-SNAPSHOT-jmh.jar EntityInstantiators -ppolluteAtWarmup=false -pmorphism=QUAD -f 2 -pcount=100 -prof gc \
+  --jvmArgs="-javaagent:/mnt/c/Users/marco/Projects/type-pollution-agent/agent/target/type-pollution-agent-0.1-SNAPSHOT.jar -Dio.type.pollution.report.interval=2 -Dagent.net.bytebuddy.experimental=true"
+#  -prof "async:rawCommand=features=vtable;event=cpu;output=jfr;dir=/tmp;libPath=${ASYNC_PROFILER_HOME}/lib/libasyncProfiler.so"
 
 # first search for all the jfr files in /tmp which contains EntityInstantiators as name
 # then run the jfr2flame tool to generate the flamegraphs
