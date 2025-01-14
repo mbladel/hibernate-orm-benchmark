@@ -32,7 +32,7 @@ import org.hibernate.cfg.Configuration;
 import org.hibernate.engine.spi.SessionFactoryImplementor;
 import org.hibernate.property.access.spi.PropertyAccess;
 
-import org.hibernate.testing.orm.domain.gambit.EntityOfBasics;
+//import org.hibernate.testing.orm.domain.gambit.EntityOfBasics;
 import org.hibernate.testing.orm.domain.gambit.EntityOfMaps;
 import org.hibernate.testing.orm.domain.gambit.EntityWithLazyOneToOne;
 import org.hibernate.testing.orm.domain.gambit.EnumValue;
@@ -42,11 +42,13 @@ import org.hibernate.testing.orm.domain.gambit.SimpleEntity;
 
 import jakarta.persistence.metamodel.EntityType;
 import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 
 import static org.hibernate.benchmark.enhancement.EnhancementUtils.buildEnhancerClassLoader;
@@ -56,6 +58,8 @@ import static org.hibernate.internal.util.NullnessUtil.castNonNull;
  * @author Marco Belladelli
  */
 @State(Scope.Thread)
+@Warmup(iterations = 5, time = 1)
+@Measurement(iterations = 5, time = 2)
 public class AccessOptimizers {
 	public enum Access {
 		STANDARD, OPTIMIZED
@@ -129,7 +133,7 @@ public class AccessOptimizers {
 					case 4:
 						query( EntityOfBasics.class, session, bh );
 					case 3:
-						query( EntityOfMaps.class, session, bh );
+//						query( EntityOfMaps.class, session, bh );
 					case 2:
 						query( EntityWithLazyOneToOne.class, session, bh );
 					case 1:
@@ -166,7 +170,7 @@ public class AccessOptimizers {
 				case 4:
 					session.persist( randomEntityOfBasics( i ) );
 				case 3:
-					session.persist( randomEntityOfMaps( i, simpleEntity ) );
+//					session.persist( randomEntityOfMaps( i/*, simpleEntity*/ ) );
 				case 2:
 					session.persist( randomEntityWithToOne( i, simpleEntity ) );
 				case 1:
@@ -189,7 +193,7 @@ public class AccessOptimizers {
 		);
 	}
 
-	private static EntityOfMaps randomEntityOfMaps(int count, SimpleEntity simpleEntity) {
+	private static EntityOfMaps randomEntityOfMaps(int count) {
 		final EntityOfMaps entity = new EntityOfMaps( count, "entity_of_maps_" + count );
 		entity.setBasicByBasic( Map.of( "key_" + count, "value_" + count ) );
 		entity.setNumberByNumber( Map.of( count, (double) count ) );
@@ -211,15 +215,15 @@ public class AccessOptimizers {
 		entity.setComponentByBasic( Map.of( "key_" + count, simpleComponent ) );
 		entity.setBasicByComponent( Map.of( simpleComponent, "value_" + count ) );
 
-		entity.setOneToManyByBasic( Map.of( "key_" + count, simpleEntity ) );
-		entity.setBasicByOneToMany( Map.of( simpleEntity, "value_" + count ) );
+//		entity.setOneToManyByBasic( Map.of( "key_" + count, simpleEntity ) );
+//		entity.setBasicByOneToMany( Map.of( simpleEntity, "value_" + count ) );
 
-		entity.setManyToManyByBasic( Map.of( "key_" + count, simpleEntity ) );
-		entity.setComponentByBasicOrdered( Map.of( "key_" + count, simpleComponent ) );
+//		entity.setManyToManyByBasic( Map.of( "key_" + count, simpleEntity ) );
+//		entity.setComponentByBasicOrdered( Map.of( "key_" + count, simpleComponent ) );
 
-		entity.setSortedManyToManyByBasic( new TreeMap<>( entity.getOneToManyByBasic() ) );
-		entity.setSortedManyToManyByBasicWithComparator( new TreeMap<>( entity.getOneToManyByBasic() ) );
-		entity.setSortedManyToManyByBasicWithSortNaturalByDefault( new TreeMap<>( entity.getOneToManyByBasic() ) );
+//		entity.setSortedManyToManyByBasic( new TreeMap<>( entity.getOneToManyByBasic() ) );
+//		entity.setSortedManyToManyByBasicWithComparator( new TreeMap<>( entity.getOneToManyByBasic() ) );
+//		entity.setSortedManyToManyByBasicWithSortNaturalByDefault( new TreeMap<>( entity.getOneToManyByBasic() ) );
 		return entity;
 	}
 
@@ -266,6 +270,66 @@ public class AccessOptimizers {
 		entity.setTheOffsetDateTime( OffsetDateTime.ofInstant( entity.getTheInstant(), ZoneId.systemDefault() ) );
 		entity.setMutableValue( new MutableValue( "mutable_value_" + count ) );
 		entity.setTheField( "field_" + count );
+		entity.setField0( "f" );
+		entity.setField10( "f" );
+		entity.setField20( "f" );
+		entity.setField30( "f" );
+		entity.setField40( "f" );
+		entity.setField50( "f" );
+		entity.setField1( "f" );
+		entity.setField11( "f" );
+		entity.setField21( "f" );
+		entity.setField31( "f" );
+		entity.setField41( "f" );
+		entity.setField51( "f" );
+		entity.setField2( "f" );
+		entity.setField12( "f" );
+		entity.setField22( "f" );
+		entity.setField32( "f" );
+		entity.setField42( "f" );
+		entity.setField52( "f" );
+		entity.setField3( "f" );
+		entity.setField13( "f" );
+		entity.setField23( "f" );
+		entity.setField33( "f" );
+		entity.setField43( "f" );
+		entity.setField53( "f" );
+		entity.setField4( "f" );
+		entity.setField14( "f" );
+		entity.setField24( "f" );
+		entity.setField34( "f" );
+		entity.setField44( "f" );
+		entity.setField54( "f" );
+		entity.setField5( "f" );
+		entity.setField15( "f" );
+		entity.setField25( "f" );
+		entity.setField35( "f" );
+		entity.setField45( "f" );
+		entity.setField55( "f" );
+		entity.setField6( "f" );
+		entity.setField16( "f" );
+		entity.setField26( "f" );
+		entity.setField36( "f" );
+		entity.setField46( "f" );
+		entity.setField56( "f" );
+		entity.setField7( "f" );
+		entity.setField17( "f" );
+		entity.setField27( "f" );
+		entity.setField37( "f" );
+		entity.setField47( "f" );
+		entity.setField57( "f" );
+		entity.setField8( "f" );
+		entity.setField18( "f" );
+		entity.setField28( "f" );
+		entity.setField38( "f" );
+		entity.setField48( "f" );
+		entity.setField58( "f" );
+		entity.setField9( "f" );
+		entity.setField19( "f" );
+		entity.setField29( "f" );
+		entity.setField39( "f" );
+		entity.setField49( "f" );
+		entity.setField59( "f" );
 		return entity;
 	}
 
@@ -279,7 +343,7 @@ public class AccessOptimizers {
 			case 4:
 				classes.add( EntityOfBasics.class );
 			case 3:
-				classes.add( EntityOfMaps.class );
+//				classes.add( EntityOfMaps.class );
 			case 2:
 				classes.add( EntityWithLazyOneToOne.class );
 			case 1:
@@ -336,9 +400,9 @@ public class AccessOptimizers {
 		final int count = switch ( nextEntityTypeId ) {
 			case 0 -> query( SimpleEntity.class, session, bh );
 			case 1 -> query( EntityWithLazyOneToOne.class, session, bh );
-			case 2 -> query( EntityOfMaps.class, session, bh );
+//			case 2 -> // query( EntityOfMaps.class, session, bh );
 			case 3 -> query( EntityOfBasics.class, session, bh );
-			default -> throw new AssertionError( "it shouldn't happen, entity type id: " + nextEntityTypeId );
+			default -> this.count;
 		};
 		assert count == this.count;
 		return count;
