@@ -9,14 +9,17 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.boot.registry.BootstrapServiceRegistryBuilder;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.bytecode.enhance.spi.EnhancementContext;
 import org.hibernate.bytecode.enhance.spi.Enhancer;
@@ -46,6 +49,7 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.infra.Blackhole;
 
+import static org.hibernate.benchmark.enhancement.EnhancementUtils.buildEnhancerClassLoader;
 import static org.hibernate.internal.util.NullnessUtil.castNonNull;
 
 /**
@@ -100,11 +104,16 @@ public class AccessOptimizers {
 			// this is fairly useless
 			throw new IllegalStateException( "Cannot pollute with monomorphic types" );
 		}
+		populateData( getSessionFactory( new TestBytecodeProvider(), types, access, false ), count, types );
 		switch ( access ) {
-			case OPTIMIZED -> sessionFactory = getSessionFactory( new TestBytecodeProvider( enhance ), types );
-			case STANDARD -> sessionFactory = getSessionFactory( new ProxyOnlyBytecodeProvider( enhance ), types );
+			case OPTIMIZED -> sessionFactory = getSessionFactory( new TestBytecodeProvider(), types, access, enhance );
+			case STANDARD -> sessionFactory = getSessionFactory(
+					new ProxyOnlyBytecodeProvider(),
+					types,
+					access,
+					enhance
+			);
 		}
-		populateData( sessionFactory, count, types );
 		session = sessionFactory.openSession();
 		session.getTransaction().begin();
 
@@ -144,10 +153,11 @@ public class AccessOptimizers {
 		}
 	}
 
-	private void populateData(SessionFactory sf, int count, int types) {
+	private static void populateData(SessionFactory sf, int count, int types) {
 		if ( types < 1 || types > 4 ) {
 			throw new IllegalArgumentException( "Invalid types" );
 		}
+		sf.getSchemaManager().exportMappedObjects( false );
 		final Session session = sf.openSession();
 		session.getTransaction().begin();
 		for ( int i = 1; i <= count; i++ ) {
@@ -259,29 +269,38 @@ public class AccessOptimizers {
 		return entity;
 	}
 
-	protected SessionFactory getSessionFactory(BytecodeProvider bytecodeProvider, int types) {
-		final Configuration config = new Configuration();
+	private static SessionFactory getSessionFactory(
+			BytecodeProvider bytecodeProvider,
+			int types,
+			Access access,
+			boolean enhance) {
+		final List<Class<?>> classes = new ArrayList<>();
 		switch ( types ) {
 			case 4:
-				config.addAnnotatedClass( EntityOfBasics.class );
+				classes.add( EntityOfBasics.class );
 			case 3:
-				config.addAnnotatedClass( EntityOfMaps.class );
+				classes.add( EntityOfMaps.class );
 			case 2:
-				config.addAnnotatedClass( EntityWithLazyOneToOne.class );
+				classes.add( EntityWithLazyOneToOne.class );
 			case 1:
-				config.addAnnotatedClass( SimpleEntity.class );
+				classes.add( SimpleEntity.class );
 		}
+
+		final BootstrapServiceRegistryBuilder bsrb = new BootstrapServiceRegistryBuilder();
+		if ( enhance ) {
+			final ClassLoader enhancerClassLoader = buildEnhancerClassLoader(
+					classes.stream().map( Class::getName ).collect( Collectors.toSet() )
+			);
+			bsrb.applyClassLoader( enhancerClassLoader );
+		}
+		final Configuration config = new Configuration( bsrb.build() );
+		classes.forEach( config::addAnnotatedClass );
 		final StandardServiceRegistryBuilder srb = config.getStandardServiceRegistryBuilder();
 		srb.applySetting( AvailableSettings.SHOW_SQL, false )
 				.applySetting( AvailableSettings.LOG_SESSION_METRICS, false )
-				.applySetting(
-						AvailableSettings.DIALECT,
-						"org.hibernate.dialect.H2Dialect"
-				)
 				.applySetting( AvailableSettings.JAKARTA_JDBC_DRIVER, "org.h2.Driver" )
 				.applySetting( AvailableSettings.JAKARTA_JDBC_URL, "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1" )
-				.applySetting( AvailableSettings.JAKARTA_JDBC_USER, "sa" )
-				.applySetting( AvailableSettings.HBM2DDL_AUTO, "create-drop" );
+				.applySetting( AvailableSettings.JAKARTA_JDBC_USER, "sa" );
 		// force no runtime bytecode-enhancement
 		srb.addService( BytecodeProvider.class, bytecodeProvider );
 		final SessionFactoryImplementor sf = (SessionFactoryImplementor) config.buildSessionFactory( srb.build() );
@@ -307,6 +326,8 @@ public class AccessOptimizers {
 	public void destroy() {
 		session.getTransaction().commit();
 		session.close();
+		sessionFactory.getSchemaManager().dropMappedObjects( false );
+		sessionFactory.close();
 	}
 
 	@Benchmark
@@ -324,9 +345,9 @@ public class AccessOptimizers {
 	}
 
 	private static int query(Class<?> entityClass, Session session, Blackhole bh) {
-		final List<?> resultList = session.createQuery(
+		final List<Object> resultList = session.createQuery(
 				"from " + entityClass.getSimpleName(),
-				entityClass
+				Object.class
 		).getResultList();
 		int count = 0;
 		for ( Object result : resultList ) {
@@ -343,12 +364,7 @@ public class AccessOptimizers {
 	 * Test {@link BytecodeProvider} which provides the different access optimizers
 	 */
 	static class TestBytecodeProvider implements BytecodeProvider {
-		private final boolean enhance;
 		private final BytecodeProviderImpl delegate = new BytecodeProviderImpl();
-
-		public TestBytecodeProvider(boolean enhance) {
-			this.enhance = enhance;
-		}
 
 		@Override
 		public ProxyFactoryFactory getProxyFactoryFactory() {
@@ -386,7 +402,7 @@ public class AccessOptimizers {
 
 		@Override
 		public Enhancer getEnhancer(EnhancementContext enhancementContext) {
-			return enhance ? delegate.getEnhancer( enhancementContext ) : null;
+			return null;
 		}
 	}
 
@@ -394,12 +410,7 @@ public class AccessOptimizers {
 	 * Empty {@link BytecodeProvider} which only provides proxy functionality
 	 */
 	static class ProxyOnlyBytecodeProvider implements BytecodeProvider {
-		private final boolean enhance;
 		private final BytecodeProviderImpl delegate = new BytecodeProviderImpl();
-
-		public ProxyOnlyBytecodeProvider(boolean enhance) {
-			this.enhance = enhance;
-		}
 
 		@Override
 		public ProxyFactoryFactory getProxyFactoryFactory() {
@@ -425,7 +436,7 @@ public class AccessOptimizers {
 
 		@Override
 		public Enhancer getEnhancer(EnhancementContext enhancementContext) {
-			return enhance ? delegate.getEnhancer( enhancementContext ) : null;
+			return null;
 		}
 	}
 
