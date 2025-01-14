@@ -18,7 +18,8 @@ fi
 
 ./gradlew jmhJar -Porm=${ORM_VERSION}
 
-java -jar basic/target/libs/hibernate-orm-benchmark-basic-1.0-SNAPSHOT-jmh.jar AccessOptimizers -ppolluteAtWarmup=false -pmorphism=ONE,FOUR -f 2 -pcount=100 -prof gc -prof "async:rawCommand=features=vtable;event=cpu;output=jfr;dir=/tmp;libPath=${ASYNC_PROFILER_HOME}/lib/libasyncProfiler.so"
+java -jar basic/target/libs/hibernate-orm-benchmark-basic-1.0-SNAPSHOT-jmh.jar AccessOptimizers -ppolluteAtWarmup=false -pmorphism=FOUR -paccess=OPTIMIZED -f 2 -pcount=100 -prof gc -prof "async:rawCommand=features=vtable;event=cpu;output=jfr;dir=/tmp;libPath=${ASYNC_PROFILER_HOME}/lib/libasyncProfiler.so"
+# -penhance=false
 
 # first search for all the jfr files in /tmp which contains AccessOptimizers as name
 # then run the jfr2flame tool to generate the flamegraphs

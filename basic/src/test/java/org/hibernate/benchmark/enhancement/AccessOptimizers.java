@@ -76,7 +76,11 @@ public class AccessOptimizers {
 	@Param
 	private Morphism morphism;
 
-	// WHen true, we make JIT compile all Morphism versions of the method but then run only 1 type
+	// Access optimizers have additional checks for enhanced entity classes
+	@Param({ "false", "true" })
+	private boolean enhance;
+
+	// When true, we make JIT compile all Morphism versions of the method but then run only 1 type
 	@Param({ "false", "true" })
 	private boolean polluteAtWarmup;
 
@@ -97,8 +101,8 @@ public class AccessOptimizers {
 			throw new IllegalStateException( "Cannot pollute with monomorphic types" );
 		}
 		switch ( access ) {
-			case OPTIMIZED -> sessionFactory = getSessionFactory( new TestBytecodeProvider(), types );
-			case STANDARD -> sessionFactory = getSessionFactory( new ProxyOnlyBytecodeProvider(), types );
+			case OPTIMIZED -> sessionFactory = getSessionFactory( new TestBytecodeProvider( enhance ), types );
+			case STANDARD -> sessionFactory = getSessionFactory( new ProxyOnlyBytecodeProvider( enhance ), types );
 		}
 		populateData( sessionFactory, count, types );
 		session = sessionFactory.openSession();
@@ -282,6 +286,7 @@ public class AccessOptimizers {
 		srb.addService( BytecodeProvider.class, bytecodeProvider );
 		final SessionFactoryImplementor sf = (SessionFactoryImplementor) config.buildSessionFactory( srb.build() );
 
+		// assert the reflection optimizers are in place
 		for ( EntityType<?> entityType : sf.getJpaMetamodel().getEntities() ) {
 			final ReflectionOptimizer optimizer = sf.getMappingMetamodel()
 					.getEntityDescriptor( entityType.getJavaType() )
@@ -338,7 +343,12 @@ public class AccessOptimizers {
 	 * Test {@link BytecodeProvider} which provides the different access optimizers
 	 */
 	static class TestBytecodeProvider implements BytecodeProvider {
+		private final boolean enhance;
 		private final BytecodeProviderImpl delegate = new BytecodeProviderImpl();
+
+		public TestBytecodeProvider(boolean enhance) {
+			this.enhance = enhance;
+		}
 
 		@Override
 		public ProxyFactoryFactory getProxyFactoryFactory() {
@@ -376,7 +386,7 @@ public class AccessOptimizers {
 
 		@Override
 		public Enhancer getEnhancer(EnhancementContext enhancementContext) {
-			return null;
+			return enhance ? delegate.getEnhancer( enhancementContext ) : null;
 		}
 	}
 
@@ -384,7 +394,12 @@ public class AccessOptimizers {
 	 * Empty {@link BytecodeProvider} which only provides proxy functionality
 	 */
 	static class ProxyOnlyBytecodeProvider implements BytecodeProvider {
+		private final boolean enhance;
 		private final BytecodeProviderImpl delegate = new BytecodeProviderImpl();
+
+		public ProxyOnlyBytecodeProvider(boolean enhance) {
+			this.enhance = enhance;
+		}
 
 		@Override
 		public ProxyFactoryFactory getProxyFactoryFactory() {
@@ -410,7 +425,7 @@ public class AccessOptimizers {
 
 		@Override
 		public Enhancer getEnhancer(EnhancementContext enhancementContext) {
-			return null;
+			return enhance ? delegate.getEnhancer( enhancementContext ) : null;
 		}
 	}
 
@@ -419,6 +434,7 @@ public class AccessOptimizers {
 		benchmark.morphism = Morphism.FOUR;
 		benchmark.count = 100;
 		benchmark.access = Access.OPTIMIZED;
+		benchmark.enhance = true;
 
 		benchmark.setup( null );
 		query( SimpleEntity.class, benchmark.session, null );
