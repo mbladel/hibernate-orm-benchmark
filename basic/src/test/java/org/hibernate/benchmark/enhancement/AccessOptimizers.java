@@ -9,14 +9,17 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.boot.registry.BootstrapServiceRegistryBuilder;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.bytecode.enhance.spi.EnhancementContext;
 import org.hibernate.bytecode.enhance.spi.Enhancer;
@@ -46,6 +49,7 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.infra.Blackhole;
 
+import static org.hibernate.benchmark.enhancement.EnhancementUtils.buildEnhancerClassLoader;
 import static org.hibernate.internal.util.NullnessUtil.castNonNull;
 
 /**
@@ -76,7 +80,11 @@ public class AccessOptimizers {
 	@Param
 	private Morphism morphism;
 
-	// WHen true, we make JIT compile all Morphism versions of the method but then run only 1 type
+	// Access optimizers have additional checks for enhanced entity classes
+	@Param({ "false", "true" })
+	private boolean enhance;
+
+	// When true, we make JIT compile all Morphism versions of the method but then run only 1 type
 	@Param({ "false", "true" })
 	private boolean polluteAtWarmup;
 
@@ -96,11 +104,16 @@ public class AccessOptimizers {
 			// this is fairly useless
 			throw new IllegalStateException( "Cannot pollute with monomorphic types" );
 		}
+		populateData( getSessionFactory( new TestBytecodeProvider(), types, access, false ), count, types );
 		switch ( access ) {
-			case OPTIMIZED -> sessionFactory = getSessionFactory( new TestBytecodeProvider(), types );
-			case STANDARD -> sessionFactory = getSessionFactory( new ProxyOnlyBytecodeProvider(), types );
+			case OPTIMIZED -> sessionFactory = getSessionFactory( new TestBytecodeProvider(), types, access, enhance );
+			case STANDARD -> sessionFactory = getSessionFactory(
+					new ProxyOnlyBytecodeProvider(),
+					types,
+					access,
+					enhance
+			);
 		}
-		populateData( sessionFactory, count, types );
 		session = sessionFactory.openSession();
 		session.getTransaction().begin();
 
@@ -140,10 +153,11 @@ public class AccessOptimizers {
 		}
 	}
 
-	private void populateData(SessionFactory sf, int count, int types) {
+	private static void populateData(SessionFactory sf, int count, int types) {
 		if ( types < 1 || types > 4 ) {
 			throw new IllegalArgumentException( "Invalid types" );
 		}
+		sf.getSchemaManager().exportMappedObjects( false );
 		final Session session = sf.openSession();
 		session.getTransaction().begin();
 		for ( int i = 1; i <= count; i++ ) {
@@ -255,33 +269,43 @@ public class AccessOptimizers {
 		return entity;
 	}
 
-	protected SessionFactory getSessionFactory(BytecodeProvider bytecodeProvider, int types) {
-		final Configuration config = new Configuration();
+	private static SessionFactory getSessionFactory(
+			BytecodeProvider bytecodeProvider,
+			int types,
+			Access access,
+			boolean enhance) {
+		final List<Class<?>> classes = new ArrayList<>();
 		switch ( types ) {
 			case 4:
-				config.addAnnotatedClass( EntityOfBasics.class );
+				classes.add( EntityOfBasics.class );
 			case 3:
-				config.addAnnotatedClass( EntityOfMaps.class );
+				classes.add( EntityOfMaps.class );
 			case 2:
-				config.addAnnotatedClass( EntityWithLazyOneToOne.class );
+				classes.add( EntityWithLazyOneToOne.class );
 			case 1:
-				config.addAnnotatedClass( SimpleEntity.class );
+				classes.add( SimpleEntity.class );
 		}
+
+		final BootstrapServiceRegistryBuilder bsrb = new BootstrapServiceRegistryBuilder();
+		if ( enhance ) {
+			final ClassLoader enhancerClassLoader = buildEnhancerClassLoader(
+					classes.stream().map( Class::getName ).collect( Collectors.toSet() )
+			);
+			bsrb.applyClassLoader( enhancerClassLoader );
+		}
+		final Configuration config = new Configuration( bsrb.build() );
+		classes.forEach( config::addAnnotatedClass );
 		final StandardServiceRegistryBuilder srb = config.getStandardServiceRegistryBuilder();
 		srb.applySetting( AvailableSettings.SHOW_SQL, false )
 				.applySetting( AvailableSettings.LOG_SESSION_METRICS, false )
-				.applySetting(
-						AvailableSettings.DIALECT,
-						"org.hibernate.dialect.H2Dialect"
-				)
 				.applySetting( AvailableSettings.JAKARTA_JDBC_DRIVER, "org.h2.Driver" )
 				.applySetting( AvailableSettings.JAKARTA_JDBC_URL, "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1" )
-				.applySetting( AvailableSettings.JAKARTA_JDBC_USER, "sa" )
-				.applySetting( AvailableSettings.HBM2DDL_AUTO, "create-drop" );
+				.applySetting( AvailableSettings.JAKARTA_JDBC_USER, "sa" );
 		// force no runtime bytecode-enhancement
 		srb.addService( BytecodeProvider.class, bytecodeProvider );
 		final SessionFactoryImplementor sf = (SessionFactoryImplementor) config.buildSessionFactory( srb.build() );
 
+		// assert the reflection optimizers are in place
 		for ( EntityType<?> entityType : sf.getJpaMetamodel().getEntities() ) {
 			final ReflectionOptimizer optimizer = sf.getMappingMetamodel()
 					.getEntityDescriptor( entityType.getJavaType() )
@@ -302,6 +326,8 @@ public class AccessOptimizers {
 	public void destroy() {
 		session.getTransaction().commit();
 		session.close();
+		sessionFactory.getSchemaManager().dropMappedObjects( false );
+		sessionFactory.close();
 	}
 
 	@Benchmark
@@ -319,9 +345,9 @@ public class AccessOptimizers {
 	}
 
 	private static int query(Class<?> entityClass, Session session, Blackhole bh) {
-		final List<?> resultList = session.createQuery(
+		final List<Object> resultList = session.createQuery(
 				"from " + entityClass.getSimpleName(),
-				entityClass
+				Object.class
 		).getResultList();
 		int count = 0;
 		for ( Object result : resultList ) {
@@ -419,6 +445,7 @@ public class AccessOptimizers {
 		benchmark.morphism = Morphism.FOUR;
 		benchmark.count = 100;
 		benchmark.access = Access.OPTIMIZED;
+		benchmark.enhance = true;
 
 		benchmark.setup( null );
 		query( SimpleEntity.class, benchmark.session, null );
