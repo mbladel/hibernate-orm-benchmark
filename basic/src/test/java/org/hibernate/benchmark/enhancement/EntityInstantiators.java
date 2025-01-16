@@ -58,8 +58,6 @@ import static org.hibernate.benchmark.enhancement.EnhancementUtils.buildEnhancer
  * @author Marco Belladelli
  */
 @State(Scope.Thread)
-@Warmup(iterations = 5, time = 1)
-@Measurement(iterations = 5, time = 1)
 public class EntityInstantiators {
 
 	public enum Instantiation {
@@ -100,7 +98,6 @@ public class EntityInstantiators {
 	@Param({ "false", "true" })
 	private boolean enhance;
 
-	private List<Class<?>> entityClasses;
 	private SessionFactory sessionFactory;
 	private Session session;
 
@@ -114,7 +111,7 @@ public class EntityInstantiators {
 			// this is fairly useless
 			throw new IllegalStateException( "Cannot pollute with monomorphic types" );
 		}
-		entityClasses = initEntityClasses( types, mutable );
+		final List<Class<?>> entityClasses = initEntityClasses( types, mutable );
 		populateData( getSessionFactory( new BytecodeProviderImpl(), entityClasses, false ), count, types );
 		switch ( instantiation ) {
 			case OPTIMIZED:
@@ -282,29 +279,23 @@ public class EntityInstantiators {
 	@Benchmark
 	public int query(Blackhole bh) {
 		int nextEntityTypeId = nextEntityTypeId();
-		final int count;
-		switch ( nextEntityTypeId ) {
-			case 0:
-				count = queryFortune( fortune0Class(), session, bh );
-				break;
-			case 1:
-				count = queryFortune( fortune1Class(), session, bh );
-				break;
-			case 2:
-				count = queryFortune( fortune2Class(), session, bh );
-				break;
-			case 3:
-				count = queryFortune( fortune3Class(), session, bh );
-				break;
-			default:
-				throw new AssertionError( "it shouldn't happen!" );
-		}
+		final int count = switch ( nextEntityTypeId ) {
+			case 0 -> queryFortune( fortune0Class(), session, bh );
+			case 1 -> queryFortune( fortune1Class(), session, bh );
+			case 2 -> queryFortune( fortune2Class(), session, bh );
+			case 3 -> queryFortune( fortune3Class(), session, bh );
+			default -> throw new AssertionError( "it shouldn't happen!" );
+		};
+		assert count == this.count;
 		return count;
 	}
+
 	@CompilerControl(CompilerControl.Mode.DONT_INLINE)
 	private static int queryFortune(Class<?> entityClass, Session session, Blackhole bh) {
-		final List<?> results = session.createQuery( "from " + entityClass.getSimpleName(), Object.class )
-				.getResultList();
+		final List<Object> results = session.createQuery(
+				"from " + entityClass.getSimpleName(),
+				Object.class
+		).getResultList();
 		int count = 0;
 		for ( Object result : results ) {
 			if ( bh != null ) {
